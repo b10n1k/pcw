@@ -169,36 +169,42 @@ def __update_run():
     for vault_namespace in cfg.getList(['vault', 'namespaces'], ['']):
 
         logger.info("Check vault_namespace: %s", vault_namespace)
-        try:
-            providers = cfg.getList(['vault.namespace.{}'.format(vault_namespace), 'providers'],
-                                    ['ec2', 'azure', 'gce'])
+        retry_cnt = 0
+        while True:
+            retry_cnt += 1
+            try:
+                providers = cfg.getList(['vault.namespace.{}'.format(vault_namespace), 'providers'],
+                                        ['ec2', 'azure', 'gce'])
 
-            if 'azure' in providers:
-                instances = Azure(vault_namespace).list_resource_groups()
-                instances = [azure_to_local_instance(i, vault_namespace) for i in instances]
-                logger.info("Got %d resources groups from Azure", len(instances))
-                sync_csp_to_local_db(instances, ProviderChoice.AZURE, vault_namespace)
+                if 'azure' in providers:
+                    instances = Azure(vault_namespace).list_resource_groups()
+                    instances = [azure_to_local_instance(i, vault_namespace) for i in instances]
+                    logger.info("Got %d resources groups from Azure", len(instances))
+                    sync_csp_to_local_db(instances, ProviderChoice.AZURE, vault_namespace)
 
-            if 'ec2' in providers:
-                instances = []
-                for region in cfg.getList(['ec2', 'regions'], EC2(vault_namespace).list_regions()):
-                    instances_csp = EC2(vault_namespace).list_instances(region=region)
-                    instances += [ec2_to_local_instance(i, vault_namespace, region) for i in instances_csp]
-                    logger.info("Got %d instances from EC2 in region %s", len(instances), region)
-                sync_csp_to_local_db(instances, ProviderChoice.EC2, vault_namespace)
+                if 'ec2' in providers:
+                    instances = []
+                    for region in cfg.getList(['ec2', 'regions'], EC2(vault_namespace).list_regions()):
+                        instances_csp = EC2(vault_namespace).list_instances(region=region)
+                        instances += [ec2_to_local_instance(i, vault_namespace, region) for i in instances_csp]
+                        logger.info("Got %d instances from EC2 in region %s", len(instances), region)
+                    sync_csp_to_local_db(instances, ProviderChoice.EC2, vault_namespace)
 
-            if 'gce' in providers:
-                instances = GCE(vault_namespace).list_all_instances()
-                instances = [gce_to_local_instance(i, vault_namespace) for i in instances]
-                logger.info("Got %d instances from GCE", len(instances))
-                sync_csp_to_local_db(instances, ProviderChoice.GCE, vault_namespace)
+                if 'gce' in providers:
+                    instances = GCE(vault_namespace).list_all_instances()
+                    instances = [gce_to_local_instance(i, vault_namespace) for i in instances]
+                    logger.info("Got %d instances from GCE", len(instances))
+                    sync_csp_to_local_db(instances, ProviderChoice.GCE, vault_namespace)
 
-            with update_mutex:
-                update_date = timezone.now()
+                with update_mutex:
+                    update_date = timezone.now()
 
-        except Exception as e:
-            logger.exception("Update failed!")
-            send_mail(type(e).__name__ + ' on Update', traceback.format_exc())
+                break
+            except Exception as e:
+                if retry_cnt > 3:
+                    logger.exception("Update failed!")
+                    send_mail(type(e).__name__ + ' on Update', traceback.format_exc())
+                    break
 
 
 def start_update():
