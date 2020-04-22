@@ -4,7 +4,7 @@ from azure.common.credentials import ServicePrincipalCredentials
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.storage import StorageManagementClient
-from azure.storage.blob import BlockBlobService
+from azure.storage.blob.blockblobservice import BlockBlobService
 from msrest.exceptions import AuthenticationError
 import re
 import time
@@ -30,11 +30,31 @@ class Azure(Provider):
     def subscription(self):
         return self.__credentials.getData('subscription_id')
 
-    def check_credentials(self):
-        if self.__credentials.isValid():
-            self.__sp_credentials = None
-            self.__credentials.renew()
+    def check_credentials(self, allow_recreation=True):
+        if self.__credentials.isExpired():
+            return self.renew()
 
+        for i in range(1, 5):
+            try:
+                self.list_resource_groups()
+                return True
+            except AuthenticationError:
+                logger.info("check_credentials failed (attemp:%d) - for client_id %s should expire at %s",
+                            i, self.__credentials.getData('client_id'),
+                            self.__credentials.getAuthExpire())
+                time.sleep(1)
+
+        if (allow_recreation):
+            self.renew()
+            return self.check_credentials(allow_recreation=False)
+
+        raise AuthenticationError("Invalid Azure credentials")
+
+    def renew(self):
+        self.__compute_mgmt_client = None
+        self.__sp_credentials = None
+        self.__resource_mgmt_client = None
+        self.__credentials.renew()
         for i in range(1, 40):
             try:
                 self.sp_credentials()

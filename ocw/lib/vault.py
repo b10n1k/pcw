@@ -119,11 +119,20 @@ class Vault:
             return None
         return dateutil.parser.isoparse(self.auth_json['auth_expire'])
 
+<<<<<<< HEAD
     def isValid(self):
         if self.auth_json is None:
             return True
         expire = dateutil.parser.isoparse(self.auth_json['auth_expire'])
         return expire < datetime.today() + timedelta(seconds=self.extra_time)
+=======
+    def isExpired(self, extra_time=None):
+        expire = self.getAuthExpire()
+        if expire is None:
+            return True
+        extra_time = timedelta(seconds=extra_time if extra_time is not None else self.extra_time)
+        return expire < datetime.today() + extra_time
+>>>>>>> 5d836ce... Fix renew of azure credentials
 
     def renew(self):
         if ConfigFile().getBoolean(['vault', 'use-file-cache']) and self._getAuthCacheFile().exists():
